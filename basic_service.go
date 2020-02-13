@@ -43,16 +43,18 @@ type BasicService struct {
 	run      Run
 	shutDown ShutDown
 
+	listeners *listeners
+
+	// everything below is protected by this mutex
 	stateMu       sync.Mutex
 	state         State
 	stopRequested bool
+	failureCase   error
 
 	// closed when state reaches Running, Terminated or Failed state
 	runningWaitersCh chan struct{}
 	// closed when state reaches Terminated or Failed state
 	terminatedWaitersCh chan struct{}
-
-	failureCase error
 
 	serviceContext context.Context
 	serviceCancel  context.CancelFunc
@@ -76,7 +78,9 @@ func (b *BasicService) InitBasicService(startUp StartUp, run Run, shutDown ShutD
 		state:               New,
 		runningWaitersCh:    make(chan struct{}),
 		terminatedWaitersCh: make(chan struct{}),
+		listeners:           &listeners{ch: make(chan func(Listener), 4)}, // there are max 4 state transitions
 	}
+	go b.listeners.run()
 }
 
 func (b *BasicService) StartAsync(parentContext context.Context) error {
@@ -89,7 +93,7 @@ func (b *BasicService) StartAsync(parentContext context.Context) error {
 
 	b.state = Starting
 	b.serviceContext, b.serviceCancel = context.WithCancel(parentContext)
-
+	b.listeners.ch <- func(l Listener) { l.Starting() }
 	go b.doStartService()
 
 	return nil
@@ -125,6 +129,8 @@ func (b *BasicService) transitionToRunning() {
 	// unblock waiters waiting for Running state
 	close(b.runningWaitersCh)
 
+	b.listeners.ch <- func(l Listener) { l.Running() }
+
 	// run on new goroutine, so that we can unlock the lock via defer
 	go b.doRunService()
 }
@@ -154,6 +160,8 @@ func (b *BasicService) transitionToStopping(failure error) {
 
 	b.state = Stopping
 	b.serviceCancel()
+	b.listeners.ch <- func(l Listener) { l.Stopping(from) }
+
 	go b.doStopService(failure)
 }
 
@@ -199,6 +207,9 @@ func (b *BasicService) transitionToFailed(err error) {
 	case Failed: // in failed we can still invoke shutDown
 		// don't close anything, it was closed before
 	}
+
+	b.listeners.ch <- func(l Listener) { l.Failed(from, err) }
+	close(b.listeners.ch)
 }
 
 // called with lock
@@ -212,6 +223,9 @@ func (b *BasicService) transitionToTerminated() {
 	}
 
 	close(b.terminatedWaitersCh)
+
+	b.listeners.ch <- func(l Listener) { l.Terminated(from) }
+	close(b.listeners.ch)
 }
 
 func (b *BasicService) StopAsync() {
@@ -269,6 +283,44 @@ func (b *BasicService) State() State {
 	b.stateMu.Lock()
 	defer b.stateMu.Unlock()
 	return b.state
+}
+
+func (b *BasicService) AddListener(listener Listener) {
+	b.listeners.add(listener)
+}
+
+func (b *BasicService) ServiceRunning() bool {
+	return b.State() == Running
+}
+
+// listeners struct holds listeners, and dispatches events from the channel to them
+type listeners struct {
+	listenerMu sync.Mutex
+	listeners  []Listener
+
+	ch chan func(l Listener)
+}
+
+func (ls *listeners) run() {
+	for lfn := range ls.ch {
+		ls.runFunc(lfn)
+	}
+}
+
+func (ls *listeners) runFunc(lfn func(l Listener)) {
+	ls.listenerMu.Lock()
+	defer ls.listenerMu.Unlock()
+
+	for _, l := range ls.listeners {
+		lfn(l)
+	}
+}
+
+func (ls *listeners) add(listener Listener) {
+	ls.listenerMu.Lock()
+	defer ls.listenerMu.Unlock()
+
+	ls.listeners = append(ls.listeners, listener)
 }
 
 var _ Service = &BasicService{}

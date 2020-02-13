@@ -61,4 +61,25 @@ type Service interface {
 
 	// Returns current state of the service.
 	State() State
+
+	// Adds listener to this service. Listener will be notified on subsequent state transitions. Previous state
+	// transitions are not replayed.
+	AddListener(listener Listener)
+}
+
+type Listener interface {
+	// Called when the service transitions from NEW to STARTING.
+	Starting()
+
+	// Called when the service transitions from STARTING to RUNNING.
+	Running()
+
+	// Called when the service transitions to the STOPPING state.
+	Stopping(from State)
+
+	// Called when the service transitions to the TERMINATED state.
+	Terminated(from State)
+
+	// Called when the service transitions to the FAILED state.
+	Failed(from State, failure error)
 }
