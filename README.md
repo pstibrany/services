@@ -1,4 +1,8 @@
-This package implements [services model](https://github.com/google/guava/wiki/ServiceExplained) used by [Google Guava](https://github.com/google/guava) library in Go.
+# Services
+
+This is a Go implementation of [services model](https://github.com/google/guava/wiki/ServiceExplained) from [Google Guava](https://github.com/google/guava) library.
+
+It provides `Service` interface (with implementation in `BasicService` type) and `Manager` for managing group of services at once. 
 
 Main benefits of this model are:
 
