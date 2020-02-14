@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// State of the service. Service starts in New state, and (optionally) goes through Starting, Running, Stopping to either Terminated or Failed.
+// State of the service. See Service for full state diagram.
 type State int
 
 const (
