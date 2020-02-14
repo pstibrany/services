@@ -86,61 +86,60 @@ Otherwise service will continue calling supplied function until stopped via `Sto
 All previous options use `BasicService` type internally, and it is `BasicService` which implements semantics of `Service` interface.
 This struct can also be embedded into custom struct, and then initialized with starting/running/stopping functions via `InitBasicService`:
 
-```
-// serviceListener is implemented as a service!
-type serviceListener struct {
+```go
+type serv struct {
 	BasicService
 
 	log []string
 	ch  chan string
 }
 
-func newServiceListener() *serviceListener {
-	sl := &serviceListener{
+func newServ() *serv {
+	s := &serv{
 		ch: make(chan string),
 	}
-	InitBasicService(&sl.BasicService, nil, sl.collect, nil)
-	return sl
+	InitBasicService(&s.BasicService, nil, s.collect, nil) // StartingFn, RunningFn, StoppingFn
+	return s
 }
 
 // used as Running function. When service is stopped, context is canceled, so we react on it.
-func (sl *serviceListener) collect(ctx context.Context) error {
+func (s *serv) collect(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
-		case msg := <-sl.ch:
-			sl.log = append(sl.log, msg)
+		case msg := <-s.ch:
+			s.log = append(s.log, msg)
 		}
 	}
 }
 
-func (sl *serviceListener) Send(msg string) {
-    if sl.State() == Running {
-    	sl.ch <- msg
+func (s *serv) Send(msg string) {
+    if s.State() == Running {
+    	s.ch <- msg
     }
 }
 ```
 
-Now `serviceListener` is a service that can be Started, observed for state changes, or stopped. As long as service is running, clients can call its `Send` method:
+Now `serv` is a service that can be started, observed for state changes, or stopped. As long as service is in Running state, clients can call its `Send` method:
 
 ```
-sl := newServiceListener()
-sl.StartAsync(context.Background())
-sl.AwaitRunning(context.Background())
+s := newServ()
+s.StartAsync(context.Background())
+s.AwaitRunning(context.Background())
 // now collect() is running
-sl.Send("A")
-sl.Send("B")
-sl.Send("C")
-sl.StopAsync()
-sl.AwaitTerminated(context.Background())
-// now service is finished, and we can access sl.log
+s.Send("A")
+s.Send("B")
+s.Send("C")
+s.StopAsync()
+s.AwaitTerminated(context.Background())
+// now service is finished, and we can access s.log
 ```
 
 After service is stopped (in Terminated or Failed state, although here the "running" function doesn't return error, so only Terminated state is possible), all collected messages can be read from `log` field.
 Notice that no further synchronization is necessary in this case... when service is stopped and client has observed that via `AwaitTerminated`, any access to `log` is safe.
 
-(This example is from unit tests in basic_service_test.go)
+(This example is adapted from unit tests in basic_service_test.go)
 
-This may seem like a lot of extra code, for such a simple usage, and it is.
+This may seem like a lot of extra code, and for such a simple usage it probably is.
 Real benefit comes when one starts combining multiple services into a manager, observe them as a group, or let services depend on each other via Await methods.
