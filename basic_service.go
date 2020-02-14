@@ -49,11 +49,10 @@ type BasicService struct {
 	shutDown StoppingFn
 
 	// everything below is protected by this mutex
-	stateMu       sync.RWMutex
-	state         State
-	stopRequested bool
-	failureCase   error
-	listeners     []chan func(l Listener)
+	stateMu     sync.RWMutex
+	state       State
+	failureCase error
+	listeners   []chan func(l Listener)
 
 	// closed when state reaches Running, Terminated or Failed state
 	runningWaitersCh chan struct{}
@@ -117,8 +116,9 @@ func (b *BasicService) doStartService() {
 
 		// pass current state, so that transition knows which channels to close
 		b.transitionToFailed(err)
-	} else if b.stopRequested || b.serviceContext.Err() != nil {
-		// if parent context is done, we don't start RunningFn, since RunningFn is supposed to stop on finished context anyway.
+	} else if b.serviceContext.Err() != nil {
+		// if service context is done (via StopAsync or parent context), we don't start RunningFn,
+		// since RunningFn is supposed to stop on finished context anyway.
 		b.transitionToStopping(nil)
 	} else {
 		b.transitionToRunning()
@@ -226,10 +226,14 @@ func (b *BasicService) transitionToTerminated() {
 }
 
 func (b *BasicService) StopAsync() {
+	if s := b.State(); s == Stopping || s == Terminated || s == Failed {
+		// no need to do anything
+		return
+	}
+
 	b.stateMu.Lock()
 	defer b.stateMu.Unlock()
 
-	b.stopRequested = true
 	if b.serviceCancel != nil {
 		b.serviceCancel()
 	}
