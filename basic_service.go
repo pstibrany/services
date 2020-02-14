@@ -30,16 +30,17 @@ type StoppingFn func() error
 //
 // All three functions are called at most once. If they are nil, they are not called and service transitions to the next state.
 //
-// Context passed to start and run function is canceled when StopAsync() is called, or service enters Stopping state.
+// Context passed to StartingFn and RunningFn function is canceled when StopAsync() is called, or service enters Stopping state.
+// This context can be used to start additional tasks from inside StartingFn or RunningFn.
 //
 // Possible orders of how functions are called:
 //
-// * 1. StartingFn – if StartingFn returns error, no other functions are called.
+// * 1. StartingFn -- if StartingFn returns error, no other functions are called.
 //
-// * 1. StartingFn, 2. StoppingFn – StartingFn doesn't return error, but StopAsync is called while running
+// * 1. StartingFn, 2. StoppingFn -- StartingFn doesn't return error, but StopAsync is called while running
 // StartingFn, or context is canceled from outside while StartingFn still runs.
 //
-// * 1. StartingFn, 2. RunningFn, 3. StoppingFn – this is most common, when StartingFn doesn't return error,
+// * 1. StartingFn, 2. RunningFn, 3. StoppingFn -- this is most common, when StartingFn doesn't return error,
 // service is not stopped and context isn't stopped externally while running StartingFn.
 type BasicService struct {
 	// functions only run, if they are not nil. If functions are nil, service will effectively do nothing
@@ -66,19 +67,19 @@ type BasicService struct {
 var invalidServiceState = "invalid service state: %v, expected %v"
 
 // Returns service built from three functions (using BasicService).
-func NewService(startUp StartingFn, run RunningFn, shutDown StoppingFn) Service {
+func NewService(start StartingFn, run RunningFn, stop StoppingFn) Service {
 	bs := &BasicService{}
-	InitBasicService(bs, startUp, run, shutDown)
+	InitBasicService(bs, start, run, stop)
 	return bs
 }
 
 // Initializes basic service. Should only be called once. This method is useful when
 // BasicService is embedded as part of bigger service structure.
-func InitBasicService(b *BasicService, startUp StartingFn, run RunningFn, shutDown StoppingFn) {
+func InitBasicService(b *BasicService, start StartingFn, run RunningFn, stop StoppingFn) {
 	*b = BasicService{
-		startUp:             startUp,
+		startUp:             start,
 		run:                 run,
-		shutDown:            shutDown,
+		shutDown:            stop,
 		state:               New,
 		runningWaitersCh:    make(chan struct{}),
 		terminatedWaitersCh: make(chan struct{}),

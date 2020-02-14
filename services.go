@@ -13,11 +13,11 @@ func NewIdleService(up StartingFn, down StoppingFn) Service {
 
 // Initializes basic service as an "idle" service -- it doesn't do anything in its Running state,
 // but still supports all state transitions.
-func InitIdleService(bs *BasicService, up StartingFn, down StoppingFn) {
-	InitBasicService(bs, up, func(ctx context.Context) error {
+func InitIdleService(bs *BasicService, start StartingFn, stop StoppingFn) {
+	InitBasicService(bs, start, func(ctx context.Context) error {
 		<-ctx.Done()
 		return nil
-	}, down)
+	}, stop)
 }
 
 // One iteration of the timer service. Called repeatedly until service is stopped, or this function returns error
