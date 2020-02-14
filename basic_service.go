@@ -6,45 +6,50 @@ import (
 	"sync"
 )
 
-// Start function of the service. Called on transition from New to Starting state. If start function returns
-// error, service goes into Failed state. If startUp returns without error, service transitions into
-// Running state (unless context has been canceled), and Run function is called.
+// StartingFn is called when service enters Starting state. If StartingFn returns
+// error, service goes into Failed state. If StartingFn returns without error, service transitions into
+// Running state (unless context has been canceled).
 //
 // serviceContext is a context that is finished at latest when service enters Stopping state, but can also be finished
-// earlier when StopAsync is called on the service.
-type StartUp func(serviceContext context.Context) error
+// earlier when StopAsync is called on the service. This context is derived from context passed to StartAsync method.
+type StartingFn func(serviceContext context.Context) error
 
-// Run function is called on transition to Running state. When it returns, service will move to Stopping state.
-// If Run or Stopping return error, Service will end in Failed state, otherwise if both functions return without
+// RunningFn function is called when service enters Running state. When it returns, service will move to Stopping state.
+// If RunningFn or Stopping return error, Service will end in Failed state, otherwise if both functions return without
 // error, service will end in Terminated state.
-type Run func(serviceContext context.Context) error
+type RunningFn func(serviceContext context.Context) error
 
-// ShutDown function is called on transition to Stopping state. When it returns, service moves to Terminated or Failed state,
-// depending on whether there was any error returned from previous Run and this ShutDown function. If both return error,
-// Run's error will be saved as failure case for Failed state.
-type ShutDown func() error
+// StoppingFn function is called when service enters Stopping state. When it returns, service moves to Terminated or Failed state,
+// depending on whether there was any error returned from previous RunningFn (if it was called) and this StoppingFn function. If both return error,
+// RunningFn's error will be saved as failure case for Failed state.
+type StoppingFn func() error
 
-// BasicService implements contract of Service interface, using three supplied functions: startUp, run and shutDown.
-// Even though these functions are called on different gouroutines, they are called sequentially. StartUp is called
-// first, then run and shutDown is called last.
+// BasicService implements contract of Service interface, using three supplied functions: StartingFn, RunningFn and StoppingFn.
+// Even though these functions are called on different gouroutines, they are called sequentially and they don't need to synchronize
+// access on the state. (In other words: StartingFn happens-before RunningFn, RunningFn happens-before StoppingFn).
 //
-// All three functions are called at most once.
+// All three functions are called at most once. If they are nil, they are not called and service transitions to the next state.
 //
-// Context passed to start and run function is cancelled when StopAsync() is called, or service enters Stopping state by
-// returning from Run function.
+// Context passed to start and run function is canceled when StopAsync() is called, or service enters Stopping state.
 //
 // Possible orders of how functions are called:
-// 1. startUp, 2. run, 3. shutDown -- this is most common, when startUp doesn't return error, and service is not stopped in startUp.
-// 1. startUp, 2. shutDown -- startUp doesn't return error, but StopAsync is called while running startUp, or context is canceled from outside while StartUp still runs.
-// 1. startUp -- if startUp returns error, no other functions are called.
-
+//
+// * 1. StartingFn – if StartingFn returns error, no other functions are called.
+//
+// * 1. StartingFn, 2. StoppingFn – StartingFn doesn't return error, but StopAsync is called while running
+// StartingFn, or context is canceled from outside while StartingFn still runs.
+//
+// * 1. StartingFn, 2. RunningFn, 3. StoppingFn – this is most common, when StartingFn doesn't return error,
+// service is not stopped and context isn't stopped externally while running StartingFn.
 type BasicService struct {
-	startUp  StartUp
-	run      Run
-	shutDown ShutDown
+	// functions only run, if they are not nil. If functions are nil, service will effectively do nothing
+	// in given state, and go to the next one without any error.
+	startUp  StartingFn
+	run      RunningFn
+	shutDown StoppingFn
 
 	// everything below is protected by this mutex
-	stateMu       sync.Mutex
+	stateMu       sync.RWMutex
 	state         State
 	stopRequested bool
 	failureCase   error
@@ -62,15 +67,15 @@ type BasicService struct {
 var invalidServiceState = "invalid service state: %v, expected %v"
 
 // Returns service built from three functions (using BasicService).
-func NewService(startUp StartUp, run Run, shutDown ShutDown) Service {
+func NewService(startUp StartingFn, run RunningFn, shutDown StoppingFn) Service {
 	bs := &BasicService{}
 	bs.InitBasicService(startUp, run, shutDown)
 	return bs
 }
 
-// Initializes basic service. Should only be called once. This method is useful when BasicService is embedded as part
-// of bigger service structure.
-func (b *BasicService) InitBasicService(startUp StartUp, run Run, shutDown ShutDown) {
+// Initializes basic service. Should only be called once. This method is useful when
+// BasicService is embedded as part of bigger service structure.
+func (b *BasicService) InitBasicService(startUp StartingFn, run RunningFn, shutDown StoppingFn) {
 	*b = BasicService{
 		startUp:             startUp,
 		run:                 run,
@@ -113,7 +118,7 @@ func (b *BasicService) doStartService() {
 		// pass current state, so that transition knows which channels to close
 		b.transitionToFailed(err)
 	} else if b.stopRequested || b.serviceContext.Err() != nil {
-		// if parent context is done, we don't start Run, since Run is supposed to stop on finished context anyway.
+		// if parent context is done, we don't start RunningFn, since RunningFn is supposed to stop on finished context anyway.
 		b.transitionToStopping(nil)
 	} else {
 		b.transitionToRunning()
@@ -138,8 +143,6 @@ func (b *BasicService) doRunService() {
 	var err error
 	if b.run != nil {
 		err = b.run(b.serviceContext)
-	} else {
-		err = fmt.Errorf("service has no run function")
 	}
 
 	b.stateMu.Lock()
@@ -267,15 +270,15 @@ func (b *BasicService) AwaitTerminated(ctx context.Context) error {
 }
 
 func (b *BasicService) FailureCase() error {
-	b.stateMu.Lock()
-	defer b.stateMu.Unlock()
+	b.stateMu.RLock()
+	defer b.stateMu.RUnlock()
 
 	return b.failureCase
 }
 
 func (b *BasicService) State() State {
-	b.stateMu.Lock()
-	defer b.stateMu.Unlock()
+	b.stateMu.RLock()
+	defer b.stateMu.RUnlock()
 	return b.state
 }
 
@@ -299,7 +302,8 @@ func (b *BasicService) AddListener(listener Listener) {
 	}()
 }
 
-// lock must be held here
+// lock must be held here. Read lock would be good enough, but since
+// this is called from transition methods, full lock is used.
 func (b *BasicService) notifyListeners(lfn func(l Listener), closeChan bool) {
 	for _, ch := range b.listeners {
 		ch <- lfn

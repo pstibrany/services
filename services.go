@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-func NewIdleService(up StartUp, down ShutDown) Service {
+func NewIdleService(up StartingFn, down StoppingFn) Service {
 	bs := &BasicService{}
 	InitIdleService(bs, up, down)
 	return bs
@@ -13,7 +13,7 @@ func NewIdleService(up StartUp, down ShutDown) Service {
 
 // Initializes basic service as an "idle" service -- it doesn't do anything in its Running state,
 // but still supports all state transitions.
-func InitIdleService(bs *BasicService, up StartUp, down ShutDown) {
+func InitIdleService(bs *BasicService, up StartingFn, down StoppingFn) {
 	bs.InitBasicService(up, func(ctx context.Context) error {
 		<-ctx.Done()
 		return nil
@@ -24,14 +24,14 @@ func InitIdleService(bs *BasicService, up StartUp, down ShutDown) {
 // in which case, service will fail.
 type OneIteration func(ctx context.Context) error
 
-func NewTimerService(interval time.Duration, up StartUp, down ShutDown, iter OneIteration) Service {
+func NewTimerService(interval time.Duration, up StartingFn, down StoppingFn, iter OneIteration) Service {
 	bs := &BasicService{}
 	InitTimerService(bs, interval, up, down, iter)
 	return bs
 }
 
 // Runs iteration function on every interval tick. When iteration returns error, service fails.
-func InitTimerService(bs *BasicService, interval time.Duration, up StartUp, down ShutDown, iter OneIteration) {
+func InitTimerService(bs *BasicService, interval time.Duration, up StartingFn, down StoppingFn, iter OneIteration) {
 	bs.InitBasicService(up, func(ctx context.Context) error {
 		t := time.NewTicker(interval)
 

@@ -125,7 +125,7 @@ func TestAllFunctionality(t *testing.T) {
 			cancelAfterStartAsync: true,
 			startErrOnContext:     false,
 			awaitRunningError:     true,  // will never be Running
-			awaitTerminatedError:  false, // but still terminates correctly, since Start or Run didn't return error
+			awaitTerminatedError:  false, // but still terminates correctly, since Start or RunningFn didn't return error
 			failureCase:           nil,   // start didn't return error, service stopped without calling run
 			listenerLog:           []string{"starting", "stopping: Starting", "terminated: Stopping"},
 		},
