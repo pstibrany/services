@@ -37,6 +37,21 @@ func (s State) String() string {
 }
 
 // Service defines interface for controlling a service.
+//
+// State diagram for the service:
+//
+//       ┌────────────────────────────────────────────────────────────────────┐
+//       │                                                                    │
+//       │                                                                    ▼
+//    ┌─────┐      ┌──────────┐      ┌─────────┐     ┌──────────┐      ┌────────────┐
+//    │ New │─────▶│ Starting │─────▶│ Running │────▶│ Stopping │───┬─▶│ Terminated │
+//    └─────┘      └──────────┘      └─────────┘     └──────────┘   │  └────────────┘
+//                       │                                          │
+//                       │                                          │
+//                       │                                          │   ┌────────┐
+//                       └──────────────────────────────────────────┴──▶│ Failed │
+//                                                                      └────────┘
+//
 type Service interface {
 	// Starts Service asynchronously. Service must be in New State, otherwise error is returned.
 	// Context is used as a parent context for service own context.

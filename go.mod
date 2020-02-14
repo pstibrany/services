@@ -1,4 +1,4 @@
-module services
+module github.com/pstibrany/services
 
 go 1.13
 
