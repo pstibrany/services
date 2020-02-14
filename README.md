@@ -123,7 +123,7 @@ func (s *serv) Send(msg string) {
 
 Now `serv` is a service that can be started, observed for state changes, or stopped. As long as service is in Running state, clients can call its `Send` method:
 
-```
+```go
 s := newServ()
 s.StartAsync(context.Background())
 s.AwaitRunning(context.Background())
