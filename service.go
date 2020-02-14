@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// State of the service. See Service for full state diagram.
+// State of the service. See Service interface for full state diagram.
 type State int
 
 const (
