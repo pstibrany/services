@@ -62,7 +62,8 @@ type BasicService struct {
 
 var invalidServiceState = "invalid service state: %v, expected %v"
 
-func (b *BasicService) NewService(startUp StartUp, run Run, shutDown ShutDown) Service {
+// Returns service built from three functions (using BasicService).
+func NewService(startUp StartUp, run Run, shutDown ShutDown) Service {
 	bs := &BasicService{}
 	bs.InitBasicService(startUp, run, shutDown)
 	return bs
@@ -204,8 +205,6 @@ func (b *BasicService) transitionToFailed(err error) {
 		// cannot close runningWaitersCh, as it has already been closed when
 		// transitioning to Running or Stopping state
 		close(b.terminatedWaitersCh)
-	case Failed: // in failed we can still invoke shutDown
-		// don't close anything, it was closed before
 	}
 
 	b.listeners.ch <- func(l Listener) { l.Failed(from, err) }
@@ -287,10 +286,6 @@ func (b *BasicService) State() State {
 
 func (b *BasicService) AddListener(listener Listener) {
 	b.listeners.add(listener)
-}
-
-func (b *BasicService) ServiceRunning() bool {
-	return b.State() == Running
 }
 
 // listeners struct holds listeners, and dispatches events from the channel to them

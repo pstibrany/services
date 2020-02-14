@@ -13,8 +13,8 @@ const (
 	Starting                // Service is starting. If starting succeeds, service enters Running state.
 	Running                 // Service is fully running now. When service stops running, it enters Stopping state.
 	Stopping                // Service is shutting down
-	Terminated              // Service has stopped successfully. Final state.
-	Failed                  // Service has failed in Starting, Running or Stopping state. Final state.
+	Terminated              // Service has stopped successfully. Terminal state.
+	Failed                  // Service has failed in Starting, Running or Stopping state. Terminal state.
 )
 
 func (s State) String() string {
