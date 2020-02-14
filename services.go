@@ -14,7 +14,7 @@ func NewIdleService(up StartingFn, down StoppingFn) Service {
 // Initializes basic service as an "idle" service -- it doesn't do anything in its Running state,
 // but still supports all state transitions.
 func InitIdleService(bs *BasicService, up StartingFn, down StoppingFn) {
-	bs.InitBasicService(up, func(ctx context.Context) error {
+	InitBasicService(bs, up, func(ctx context.Context) error {
 		<-ctx.Done()
 		return nil
 	}, down)
@@ -32,7 +32,7 @@ func NewTimerService(interval time.Duration, up StartingFn, down StoppingFn, ite
 
 // Runs iteration function on every interval tick. When iteration returns error, service fails.
 func InitTimerService(bs *BasicService, interval time.Duration, up StartingFn, down StoppingFn, iter OneIteration) {
-	bs.InitBasicService(up, func(ctx context.Context) error {
+	InitBasicService(bs, up, func(ctx context.Context) error {
 		t := time.NewTicker(interval)
 
 		for {

@@ -69,13 +69,13 @@ var invalidServiceState = "invalid service state: %v, expected %v"
 // Returns service built from three functions (using BasicService).
 func NewService(startUp StartingFn, run RunningFn, shutDown StoppingFn) Service {
 	bs := &BasicService{}
-	bs.InitBasicService(startUp, run, shutDown)
+	InitBasicService(bs, startUp, run, shutDown)
 	return bs
 }
 
 // Initializes basic service. Should only be called once. This method is useful when
 // BasicService is embedded as part of bigger service structure.
-func (b *BasicService) InitBasicService(startUp StartingFn, run RunningFn, shutDown StoppingFn) {
+func InitBasicService(b *BasicService, startUp StartingFn, run RunningFn, shutDown StoppingFn) {
 	*b = BasicService{
 		startUp:             startUp,
 		run:                 run,
@@ -291,7 +291,9 @@ func (b *BasicService) AddListener(listener Listener) {
 		return
 	}
 
-	ch := make(chan func(l Listener), 4) // there are max 4 state transitions
+	// There are max 4 state transitions. We use buffer to avoid blocking the sender,
+	// which holds service lock.
+	ch := make(chan func(l Listener), 4)
 	b.listeners = append(b.listeners, ch)
 
 	// each listener has its own goroutine, processing events.

@@ -15,6 +15,17 @@ const (
 	stopped                     // all services stopped (failed or terminated)
 )
 
+type ManagerListener interface {
+	// Called when Manager reaches Healthy state (all services running)
+	Healthy()
+
+	// Called when Manager reaches Stopped state (all services are either Terminated or Failed)
+	Stopped()
+
+	// Called when service fails.
+	Failure(service Service)
+}
+
 // Service Manager is initialized with a collection of services. They all must be in New state.
 // Service manager can start them, and observe their state as a group.
 // Once all services are running, Manager is said to be Healthy. It is possible for manager to never reach the Healthy state, if some services fail to start.
@@ -29,6 +40,7 @@ type Manager struct {
 	state         managerState
 	byState       map[State][]Service // Services sorted by state
 	healthyClosed bool                // was healthyCh closed already?
+	listeners     []chan func(listener ManagerListener)
 }
 
 // NewManager creates new service manager. It needs at least one service, and all services must be in New state.
@@ -153,6 +165,10 @@ func (m *Manager) serviceStateChanged(s Service, from State, to State) {
 
 	m.byState[to] = append(m.byState[to], s)
 
+	if to == Failed {
+		m.notifyListeners(func(l ManagerListener) { l.Failure(s) }, false)
+	}
+
 	running := len(m.byState[Running])
 	stopping := len(m.byState[Stopping])
 	done := len(m.byState[Terminated]) + len(m.byState[Failed])
@@ -164,6 +180,7 @@ func (m *Manager) serviceStateChanged(s Service, from State, to State) {
 		close(m.healthyCh)
 		m.state = healthy
 		m.healthyClosed = true
+		m.notifyListeners(func(l ManagerListener) { l.Healthy() }, false)
 
 	case done == all:
 		if !m.healthyClosed {
@@ -173,6 +190,7 @@ func (m *Manager) serviceStateChanged(s Service, from State, to State) {
 		}
 		close(m.stoppedCh) // happens at most once
 		m.state = stopped
+		m.notifyListeners(func(l ManagerListener) { l.Stopped() }, true)
 
 	default:
 		if !m.healthyClosed && (done > 0 || stopping > 0) {
@@ -182,6 +200,44 @@ func (m *Manager) serviceStateChanged(s Service, from State, to State) {
 		}
 
 		m.state = unknown
+	}
+}
+
+// Registers a ManagerListener to be run when this Manager changes state.
+// The listener will not have previous state changes replayed, so it is suggested that listeners are added before any of the managed services are started.
+// AddListener guarantees execution ordering across calls to a given listener but not across calls to multiple listeners.
+// Specifically, a given listener will have its callbacks invoked in the same order as the underlying service enters those states.
+// Additionally, at most one of the listener's callbacks will execute at once.
+// However, multiple listeners' callbacks may execute concurrently, and listeners may execute in an order different from the one in which they were registered.
+func (m *Manager) AddListener(listener ManagerListener) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.state == stopped {
+		// no need to register listener, as no more events will be sent
+		return
+	}
+
+	// max number of events is: failed notification for each service + healthy + stopped.
+	// we use buffer to avoid blocking the sender, which holds the manager's lock.
+	ch := make(chan func(l ManagerListener), len(m.services)+2)
+	m.listeners = append(m.listeners, ch)
+
+	go func() {
+		for fn := range ch {
+			fn(listener)
+		}
+	}()
+}
+
+// called with lock
+func (m *Manager) notifyListeners(fn func(l ManagerListener), closeChan bool) {
+	for _, ch := range m.listeners {
+		ch <- fn
+
+		if closeChan {
+			close(ch)
+		}
 	}
 }
 

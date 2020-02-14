@@ -15,12 +15,16 @@ func TestNoServices(t *testing.T) {
 }
 
 func TestBasicManagerTransitions(t *testing.T) {
+	t.Parallel()
+
 	s1 := serviceThatDoesntDoAnything()
 	s2 := serviceThatDoesntDoAnything()
 	s3 := serviceThatDoesntDoAnything()
+	gl := newGatheringManagerListener(t)
 
 	m, err := NewManager([]Service{s1, s2, s3})
 	require.NoError(t, err)
+	m.AddListener(gl)
 
 	states := m.ServicesByState()
 	for s, ss := range states {
@@ -51,9 +55,14 @@ func TestBasicManagerTransitions(t *testing.T) {
 		require.Equal(t, Terminated, s)
 		require.Len(t, ss, 3)
 	}
+
+	require.NoError(t, gl.AwaitTerminated(context.Background()))
+	require.Equal(t, []string{"healthy", "stopped"}, gl.log)
 }
 
 func TestManagerRequiresServicesToBeInNewState(t *testing.T) {
+	t.Parallel()
+
 	s1 := serviceThatDoesntDoAnything()
 	s2 := serviceThatDoesntDoAnything()
 	s3 := serviceThatDoesntDoAnything()
@@ -65,12 +74,17 @@ func TestManagerRequiresServicesToBeInNewState(t *testing.T) {
 }
 
 func TestManagerReactsOnExternalStateChanges(t *testing.T) {
+	t.Parallel()
+
 	s1 := serviceThatDoesntDoAnything()
 	s2 := serviceThatDoesntDoAnything()
 	s3 := serviceThatDoesntDoAnything()
+	gl := newGatheringManagerListener(t)
 
 	m, err := NewManager([]Service{s1, s2, s3})
 	require.NoError(t, err)
+
+	m.AddListener(gl)
 
 	require.NoError(t, s1.StartAsync(context.Background()))
 	require.NoError(t, s2.StartAsync(context.Background()))
@@ -89,15 +103,22 @@ func TestManagerReactsOnExternalStateChanges(t *testing.T) {
 
 	states = m.ServicesByState()
 	require.ElementsMatch(t, states[Terminated], []Service{s1, s2, s3})
+
+	require.NoError(t, gl.AwaitTerminated(context.Background()))
+	require.Equal(t, []string{"stopped"}, gl.log) // never goes to healthy
 }
 
 func TestManagerGoesToStoppedStateBeforeBeingHealthyOrEvenStarting(t *testing.T) {
+	t.Parallel()
+
 	// by using single service, as soon as it is terminated, manager will be done.
 	// we test that healthy waiters are notified
 	s1 := serviceThatDoesntDoAnything()
+	gl := newGatheringManagerListener(t)
 
 	m, err := NewManager([]Service{s1})
 	require.NoError(t, err)
+	m.AddListener(gl)
 	require.False(t, m.IsStopped())
 
 	s1.StopAsync()
@@ -110,30 +131,45 @@ func TestManagerGoesToStoppedStateBeforeBeingHealthyOrEvenStarting(t *testing.T)
 
 	states := m.ServicesByState()
 	require.ElementsMatch(t, states[Terminated], []Service{s1})
+
+	require.NoError(t, gl.AwaitTerminated(context.Background()))
+	require.Equal(t, []string{"stopped"}, gl.log)
 }
 
 func TestManagerCannotStartIfAllServicesArentNew(t *testing.T) {
+	t.Parallel()
+
 	s1 := serviceThatDoesntDoAnything()
 	s2 := serviceThatDoesntDoAnything()
 	s3 := serviceThatDoesntDoAnything()
+	gl := newGatheringManagerListener(t)
 
 	m, err := NewManager([]Service{s1, s2, s3})
 	require.NoError(t, err)
+
+	m.AddListener(gl)
 
 	require.NoError(t, s3.StartAsync(context.Background()))
 	require.Error(t, m.StartAsync(context.Background())) // cannot start now
 
 	m.StopAsync()
 	require.NoError(t, m.AwaitStopped(context.Background()))
+
+	require.NoError(t, gl.AwaitTerminated(context.Background()))
+	require.Equal(t, []string{"stopped"}, gl.log)
 }
 
 func TestManagerThatFailsToStart(t *testing.T) {
+	t.Parallel()
+
 	s1 := serviceThatDoesntDoAnything()
 	s2 := serviceThatDoesntDoAnything()
 	s3 := serviceThatFailsToStart()
+	gl := newGatheringManagerListener(t)
 
 	m, err := NewManager([]Service{s1, s2, s3})
 	require.NoError(t, err)
+	m.AddListener(gl)
 
 	states := m.ServicesByState()
 	require.Equal(t, states, map[State][]Service{New: {s1, s2, s3}})
@@ -157,14 +193,21 @@ func TestManagerThatFailsToStart(t *testing.T) {
 		Terminated: {s1, s2},
 		Failed:     {s3},
 	})
+
+	require.NoError(t, gl.AwaitTerminated(context.Background()))
+	require.Equal(t, []string{"failed", "stopped"}, gl.log)
 }
 
 func TestManagerEntersStopStateEventually(t *testing.T) {
+	t.Parallel()
+
 	s1 := serviceThatStopsOnItsOwnAfterTimeout(200 * time.Millisecond)
 	s2 := serviceThatStopsOnItsOwnAfterTimeout(300 * time.Millisecond)
+	gl := newGatheringManagerListener(t)
 
 	m, err := NewManager([]Service{s1, s2})
 	require.NoError(t, err)
+	m.AddListener(gl)
 
 	// start all services
 	require.NoError(t, m.StartAsync(context.Background()))
@@ -173,14 +216,21 @@ func TestManagerEntersStopStateEventually(t *testing.T) {
 
 	// both services stop after short time, so this manager will become stopped
 	require.NoError(t, m.AwaitStopped(context.Background()))
+
+	require.NoError(t, gl.AwaitTerminated(context.Background()))
+	require.Equal(t, []string{"healthy", "stopped"}, gl.log)
 }
 
 func TestManagerAwaitWithContextCancellation(t *testing.T) {
+	t.Parallel()
+
 	s1 := serviceThatStopsOnItsOwnAfterTimeout(200 * time.Millisecond)
 	s2 := serviceThatStopsOnItsOwnAfterTimeout(300 * time.Millisecond)
+	gl := newGatheringManagerListener(t)
 
 	m, err := NewManager([]Service{s1, s2})
 	require.NoError(t, err)
+	m.AddListener(gl)
 
 	// test context cancellation
 	stoppedContext, cancel := context.WithCancel(context.Background())
@@ -196,6 +246,9 @@ func TestManagerAwaitWithContextCancellation(t *testing.T) {
 
 	require.Equal(t, context.DeadlineExceeded, m.AwaitStopped(shortContext))
 	require.NoError(t, m.AwaitStopped(context.Background()))
+
+	require.NoError(t, gl.AwaitTerminated(context.Background()))
+	require.Equal(t, []string{"healthy", "stopped"}, gl.log)
 }
 
 func mergeStates(m map[State][]Service, states ...State) []Service {
@@ -236,4 +289,41 @@ func serviceThatStopsOnItsOwnAfterTimeout(timeout time.Duration) Service {
 func serviceThatDoesntDoAnything() Service {
 	// but respects StopAsync and stops.
 	return NewIdleService(nil, nil)
+}
+
+type gatheringManagerListener struct {
+	BasicService
+
+	log []string
+	ch  chan string
+}
+
+// returns started listener
+func newGatheringManagerListener(t *testing.T) *gatheringManagerListener {
+	gl := &gatheringManagerListener{
+		ch: make(chan string),
+	}
+	InitBasicService(&gl.BasicService, nil, gl.collect, nil)
+	require.NoError(t, gl.StartAsync(context.Background()))
+	return gl
+}
+
+func (g *gatheringManagerListener) collect(ctx context.Context) error {
+	for s := range g.ch {
+		g.log = append(g.log, s)
+	}
+	return nil
+}
+
+func (g *gatheringManagerListener) Healthy() {
+	g.ch <- "healthy"
+}
+
+func (g *gatheringManagerListener) Stopped() {
+	g.ch <- "stopped"
+	close(g.ch)
+}
+
+func (g *gatheringManagerListener) Failure(s Service) {
+	g.ch <- "failed"
 }

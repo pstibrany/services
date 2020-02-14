@@ -42,7 +42,8 @@ type Service interface {
 	// Context is used as a parent context for service own context.
 	StartAsync(ctx context.Context) error
 
-	// Waits until service gets into Running state. If service is already in Running state, returns immediately.
+	// Waits until service gets into Running state.
+	// If service is already in Running state, returns immediately with no error.
 	// If service is in a state, from which it cannot get into Running state, error is returned immediately.
 	// This method is blocking, if service is in New or Starting state.
 	AwaitRunning(ctx context.Context) error
@@ -50,20 +51,30 @@ type Service interface {
 	// If Service is New, it is Terminated without having been started nor stopped.
 	// If Service is in Starting or Running state, this initiates shutdown and returns immediately.
 	// If Service has already been stopped, this method returns immediately, without taking action.
+	// This method doesn't block and can be called multiple times.
 	StopAsync()
 
-	// Waits for the service to reach Terminated state. If service enters this state, this method returns nil.
-	// If service enters Failed state (or context is finished before), error is returned.
+	// Waits for the service to reach Terminated state.
+	// If service enters Terminated state, this method returns nil.
+	// If service enters Failed state (or context is finished before reaching Terminated or Failed), error is returned.
 	AwaitTerminated(ctx context.Context) error
 
-	// If Service is in Failed state, this method returns the reason. It returns nil, if Service is not in Failed state.
+	// If Service is in Failed state, this method returns the reason.
+	// It returns nil, if Service is not in Failed state.
 	FailureCase() error
 
 	// Returns current state of the service.
 	State() State
 
-	// Adds listener to this service. Listener will be notified on subsequent state transitions. Previous state
-	// transitions are not replayed.
+	// AddListener adds listener to this service. Listener will be notified on subsequent state transitions
+	// of the service. Previous state transitions are not replayed, so it is suggested to add listeners before
+	// service is started.
+	//
+	// AddListener guarantees execution ordering across calls to a given listener but not across calls to
+	// multiple listeners. Specifically, a given listener will have its callbacks invoked in the same order
+	// as the service enters those states. Additionally, at most one of the listener's callbacks will execute
+	// at once. However, multiple listeners' callbacks may execute concurrently, and listeners may execute
+	// in an order different from the one in which they were registered.
 	AddListener(listener Listener)
 }
 

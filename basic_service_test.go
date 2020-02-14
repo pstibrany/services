@@ -32,7 +32,7 @@ func newServ(conf servConf) *serv {
 	s := &serv{
 		conf: conf,
 	}
-	s.InitBasicService(s.startUp, s.run, s.shutDown)
+	InitBasicService(&s.BasicService, s.startUp, s.run, s.shutDown)
 	return s
 }
 
@@ -85,6 +85,8 @@ type testCase struct {
 }
 
 func TestStopInNew(t *testing.T) {
+	t.Parallel()
+
 	s := newServ(servConf{})
 
 	require.Equal(t, New, s.State())
@@ -172,14 +174,14 @@ func TestAllFunctionality(t *testing.T) {
 	}
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
 			runTestCase(t, tc)
 		})
 	}
 }
 
 func runTestCase(t *testing.T, tc testCase) {
-	t.Parallel()
-
 	s := newServ(servConf{
 		startSleep:            time.Second,
 		startRetVal:           tc.startRetVal,
@@ -252,7 +254,7 @@ func newServiceListener() *serviceListener {
 	sl := &serviceListener{
 		ch: make(chan string),
 	}
-	sl.InitBasicService(nil, sl.collect, nil)
+	InitBasicService(&sl.BasicService, nil, sl.collect, nil)
 	return sl
 }
 
