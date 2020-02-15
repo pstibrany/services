@@ -15,8 +15,9 @@ const (
 	stopped                     // all services stopped (failed or terminated)
 )
 
+// ManagerListener listens for events from Manager.
 type ManagerListener interface {
-	// Called when Manager reaches Healthy state (all services running)
+	// Called when Manager reaches Healthy state (all services Running)
 	Healthy()
 
 	// Called when Manager reaches Stopped state (all services are either Terminated or Failed)
@@ -33,8 +34,8 @@ type ManagerListener interface {
 type Manager struct {
 	services []Service
 
-	healthyCh chan struct{}
-	stoppedCh chan struct{}
+	healthyCh chan struct{} // closed when healthy state is reached, or if it cannot be reached anymore (whatever happens first)
+	stoppedCh chan struct{} // closed when stopped state is reached.
 
 	mu            sync.Mutex
 	state         managerState
@@ -71,7 +72,8 @@ func NewManager(services []Service) (*Manager, error) {
 	return m, nil
 }
 
-// Initiates service startup on all the services being managed. It is only valid to call this method if all of the services are New.
+// Initiates service startup on all the services being managed.
+// It is only valid to call this method if all of the services are New.
 func (m *Manager) StartAsync(ctx context.Context) error {
 	for _, s := range m.services {
 		err := s.StartAsync(ctx)
@@ -97,7 +99,8 @@ func (m *Manager) IsHealthy() bool {
 	return m.state == healthy
 }
 
-// Waits for the ServiceManager to become healthy. Returns nil, if manager is healthy, error otherwise.
+// Waits for the ServiceManager to become healthy. Returns nil, if manager is healthy, error otherwise (eg. manager
+// is in a state in which it cannot get healthy anymore).
 func (m *Manager) AwaitHealthy(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
@@ -111,8 +114,7 @@ func (m *Manager) AwaitHealthy(ctx context.Context) error {
 	if m.state == healthy {
 		return nil
 	} else {
-		// must have been healthy before, since healthyCh is closed
-		return errors.New("not healthy anymore")
+		return errors.New("not healthy")
 	}
 }
 
