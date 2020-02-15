@@ -207,6 +207,7 @@ func (m *Manager) serviceStateChanged(s Service, from State, to State) {
 
 // Registers a ManagerListener to be run when this Manager changes state.
 // The listener will not have previous state changes replayed, so it is suggested that listeners are added before any of the managed services are started.
+//
 // AddListener guarantees execution ordering across calls to a given listener but not across calls to multiple listeners.
 // Specifically, a given listener will have its callbacks invoked in the same order as the underlying service enters those states.
 // Additionally, at most one of the listener's callbacks will execute at once.
