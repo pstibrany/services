@@ -46,7 +46,7 @@ type BasicService struct {
 	// functions only run, if they are not nil. If functions are nil, service will effectively do nothing
 	// in given state, and go to the next one without any error.
 	startFn    StartingFn
-	runFn      RunningFn
+	runningFn  RunningFn
 	stoppingFn StoppingFn
 
 	// everything below is protected by this mutex
@@ -80,7 +80,7 @@ func NewService(start StartingFn, run RunningFn, stop StoppingFn) Service {
 func InitBasicService(b *BasicService, start StartingFn, run RunningFn, stop StoppingFn) {
 	*b = BasicService{
 		startFn:             start,
-		runFn:               run,
+		runningFn:           run,
 		stoppingFn:          stop,
 		state:               New,
 		runningWaitersCh:    make(chan struct{}),
@@ -89,33 +89,41 @@ func InitBasicService(b *BasicService, start StartingFn, run RunningFn, stop Sto
 }
 
 func (b *BasicService) StartAsync(parentContext context.Context) error {
-	switched := b.switchState(New, Starting, func() {
+	switched, oldState := b.switchState(New, Starting, func() {
 		b.serviceContext, b.serviceCancel = context.WithCancel(parentContext)
 		b.notifyListeners(func(l Listener) { l.Starting() }, false)
 		go b.main()
 	})
 
 	if !switched {
-		return invalidServiceStateError(b.State(), New)
+		return invalidServiceStateError(oldState, New)
 	}
 	return nil
 }
 
-func (b *BasicService) switchState(from, to State, stateFn func()) bool {
+func (b *BasicService) switchState(from, to State, stateFn func()) (bool, State) {
 	b.stateMu.Lock()
 	defer b.stateMu.Unlock()
 
 	if b.state != from {
-		return false
+		return false, b.state
 	}
 	b.state = to
 	if stateFn != nil {
 		stateFn()
 	}
-	return true
+	return true, from
 }
 
-// This is the "main" method, that does most of the work of service. Entire life of the service happens here.
+func (b *BasicService) mustSwitchState(from, to State, stateFn func()) {
+	if ok, _ := b.switchState(from, to, stateFn); !ok {
+		panic("switchState failed")
+	}
+}
+
+// This is the "main" method, that does most of the work of service.
+// Service is in Starting state when this method runs.
+// Entire lifecycle of the service happens here.
 func (b *BasicService) main() {
 	var err error = nil
 
@@ -124,8 +132,9 @@ func (b *BasicService) main() {
 	}
 
 	if err != nil {
-		b.switchState(Starting, Failed, func() {
+		b.mustSwitchState(Starting, Failed, func() {
 			b.failureCase = err
+			// we will not reach Running or Terminated, notify waiters
 			close(b.runningWaitersCh)
 			close(b.terminatedWaitersCh)
 			b.notifyListeners(func(l Listener) { l.Failed(Starting, err) }, true)
@@ -135,7 +144,7 @@ func (b *BasicService) main() {
 
 	stoppingFrom := Starting
 
-	// OK, start has succeeded. We should switch to Running now, but don't do that,
+	// Starting has succeeded. We should switch to Running now, but let's not do that
 	// if our context has been canceled in the meantime.
 	if err = b.serviceContext.Err(); err != nil {
 		err = nil // don't report this as a failure, it is a normal "stop" signal.
@@ -143,20 +152,20 @@ func (b *BasicService) main() {
 	}
 
 	// We have reached Running state
-	b.switchState(Starting, Running, func() {
+	b.mustSwitchState(Starting, Running, func() {
 		// unblock waiters waiting for Running state
 		close(b.runningWaitersCh)
 		b.notifyListeners(func(l Listener) { l.Running() }, false)
 	})
 
 	stoppingFrom = Running
-	if b.runFn != nil {
-		err = b.runFn(b.serviceContext)
+	if b.runningFn != nil {
+		err = b.runningFn(b.serviceContext)
 	}
 
 stop:
 	failure := err
-	b.switchState(stoppingFrom, Stopping, func() {
+	b.mustSwitchState(stoppingFrom, Stopping, func() {
 		if stoppingFrom == Starting {
 			// we will not reach Running state
 			close(b.runningWaitersCh)
@@ -175,31 +184,17 @@ stop:
 	}
 
 	if failure != nil {
-		b.switchState(Stopping, Failed, func() {
+		b.mustSwitchState(Stopping, Failed, func() {
 			b.failureCase = failure
 			close(b.terminatedWaitersCh)
 			b.notifyListeners(func(l Listener) { l.Failed(Stopping, failure) }, true)
 		})
 	} else {
-		b.switchState(Stopping, Terminated, func() {
+		b.mustSwitchState(Stopping, Terminated, func() {
 			close(b.terminatedWaitersCh)
 			b.notifyListeners(func(l Listener) { l.Terminated(Stopping) }, true)
 		})
 	}
-}
-
-// called with lock
-func (b *BasicService) transitionToTerminated() {
-	from := b.state
-
-	b.state = Terminated
-	if from == New {
-		// we will not reach Running state now, so we can unblock waiters.
-		close(b.runningWaitersCh)
-	}
-
-	close(b.terminatedWaitersCh)
-
 }
 
 func (b *BasicService) StopAsync() {
@@ -208,15 +203,17 @@ func (b *BasicService) StopAsync() {
 		return
 	}
 
-	terminated := b.switchState(New, Terminated, func() {
-		// service wasn't started yet, and it won't be now
+	terminated, _ := b.switchState(New, Terminated, func() {
+		// Service wasn't started yet, and it won't be now.
+		// Notify waiters and listeners.
 		close(b.runningWaitersCh)
 		close(b.terminatedWaitersCh)
 		b.notifyListeners(func(l Listener) { l.Terminated(New) }, true)
 	})
 
 	if !terminated {
-		// it means that service is at least Starting. Just cancel the context (it must exist at this point)
+		// Service is Starting or Running. Just cancel the context (it must exist,
+		// as it is created when switching from New to Starting state)
 		b.serviceCancel()
 	}
 }
@@ -278,7 +275,7 @@ func (b *BasicService) AddListener(listener Listener) {
 }
 
 // lock must be held here. Read lock would be good enough, but since
-// this is called from transition methods, full lock is used.
+// this is called from state transitions, full lock is used.
 func (b *BasicService) notifyListeners(lfn func(l Listener), closeChan bool) {
 	for _, ch := range b.listeners {
 		ch <- lfn

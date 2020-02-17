@@ -20,11 +20,11 @@ type serv struct {
 
 type servConf struct {
 	startSleep            time.Duration
-	startErrOnContextDone bool
+	startReturnContextErr bool
 	startRetVal           error
 
 	runSleep            time.Duration
-	runErrOnContextDone bool
+	runReturnContextErr bool
 	runRetVal           error
 
 	stopRetVal error
@@ -42,7 +42,7 @@ func (s *serv) startUp(ctx context.Context) error {
 	select {
 	case <-time.After(s.conf.startSleep):
 	case <-ctx.Done():
-		if s.conf.startErrOnContextDone {
+		if s.conf.startReturnContextErr {
 			return ctx.Err()
 		}
 	}
@@ -53,7 +53,7 @@ func (s *serv) run(ctx context.Context) error {
 	select {
 	case <-time.After(s.conf.runSleep):
 	case <-ctx.Done():
-		if s.conf.runErrOnContextDone {
+		if s.conf.runReturnContextErr {
 			return ctx.Err()
 		}
 	}
@@ -68,8 +68,8 @@ type testCase struct {
 	startReturnContextErr bool
 	startRetVal           error
 
-	runErrOnContext bool
-	runRetVal       error
+	runReturnContextErr bool
+	runRetVal           error
 
 	stopRetVal error
 
@@ -151,7 +151,7 @@ func TestAllFunctionality(t *testing.T) {
 		},
 
 		"runFn returns error from context cancelation": {
-			runErrOnContext:         true,
+			runReturnContextErr:     true,
 			cancelAfterAwaitRunning: true,
 			awaitTerminatedError:    invalidServiceStateError(Failed, Terminated), // service will get into Failed state, since run failed
 			failureCase:             context.Canceled,
@@ -176,8 +176,8 @@ func TestAllFunctionality(t *testing.T) {
 	}
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
+			// don't run tests in parallel, somehow that doesn't report failures correctly :-(
+			// t.Parallel()
 			runTestCase(t, tc)
 		})
 	}
@@ -187,10 +187,10 @@ func runTestCase(t *testing.T, tc testCase) {
 	s := newServ(servConf{
 		startSleep:            time.Second,
 		startRetVal:           tc.startRetVal,
-		startErrOnContextDone: tc.startReturnContextErr,
+		startReturnContextErr: tc.startReturnContextErr,
 		runSleep:              time.Second,
 		runRetVal:             tc.runRetVal,
-		runErrOnContextDone:   tc.runErrOnContext,
+		runReturnContextErr:   tc.runReturnContextErr,
 		stopRetVal:            tc.stopRetVal,
 	})
 
@@ -202,13 +202,13 @@ func runTestCase(t *testing.T, tc testCase) {
 
 	require.Equal(t, New, s.State())
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel() // make sure to call cancel at least once
+	ctx, servCancel := context.WithCancel(context.Background())
+	defer servCancel() // make sure to call cancel at least once
 
 	require.NoError(t, s.StartAsync(ctx), "StartAsync")
 	require.Error(t, s.StartAsync(ctx), "second StartAsync") // must always return error
 	if tc.cancelAfterStartAsync {
-		cancel()
+		servCancel()
 	}
 	if tc.stopAfterStartAsync {
 		s.StopAsync()
@@ -220,7 +220,7 @@ func runTestCase(t *testing.T, tc testCase) {
 	require.Equal(t, tc.awaitRunningError, s.AwaitRunning(awaitCtx), "AwaitRunning")
 
 	if tc.cancelAfterAwaitRunning {
-		cancel()
+		servCancel()
 	}
 	if tc.stopAfterAwaitRunning {
 		s.StopAsync()
