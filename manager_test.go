@@ -10,7 +10,7 @@ import (
 )
 
 func TestNoServices(t *testing.T) {
-	_, err := NewManager(nil)
+	_, err := NewManager()
 	require.Error(t, err)
 }
 
@@ -22,7 +22,7 @@ func TestBasicManagerTransitions(t *testing.T) {
 	s3 := serviceThatDoesntDoAnything()
 	gl := newGatheringManagerListener(t)
 
-	m, err := NewManager([]Service{s1, s2, s3})
+	m, err := NewManager(s1, s2, s3)
 	require.NoError(t, err)
 	m.AddListener(gl)
 
@@ -69,7 +69,7 @@ func TestManagerRequiresServicesToBeInNewState(t *testing.T) {
 
 	require.NoError(t, s1.StartAsync(context.Background()))
 
-	_, err := NewManager([]Service{s1, s2, s3})
+	_, err := NewManager(s1, s2, s3)
 	require.Error(t, err) // s1 is not New anymore
 }
 
@@ -81,7 +81,7 @@ func TestManagerReactsOnExternalStateChanges(t *testing.T) {
 	s3 := serviceThatDoesntDoAnything()
 	gl := newGatheringManagerListener(t)
 
-	m, err := NewManager([]Service{s1, s2, s3})
+	m, err := NewManager(s1, s2, s3)
 	require.NoError(t, err)
 
 	m.AddListener(gl)
@@ -116,7 +116,7 @@ func TestManagerGoesToStoppedStateBeforeBeingHealthyOrEvenStarting(t *testing.T)
 	s1 := serviceThatDoesntDoAnything()
 	gl := newGatheringManagerListener(t)
 
-	m, err := NewManager([]Service{s1})
+	m, err := NewManager(s1)
 	require.NoError(t, err)
 	m.AddListener(gl)
 	require.False(t, m.IsStopped())
@@ -144,7 +144,7 @@ func TestManagerCannotStartIfAllServicesArentNew(t *testing.T) {
 	s3 := serviceThatDoesntDoAnything()
 	gl := newGatheringManagerListener(t)
 
-	m, err := NewManager([]Service{s1, s2, s3})
+	m, err := NewManager(s1, s2, s3)
 	require.NoError(t, err)
 
 	m.AddListener(gl)
@@ -167,7 +167,7 @@ func TestManagerThatFailsToStart(t *testing.T) {
 	s3 := serviceThatFailsToStart()
 	gl := newGatheringManagerListener(t)
 
-	m, err := NewManager([]Service{s1, s2, s3})
+	m, err := NewManager(s1, s2, s3)
 	require.NoError(t, err)
 	m.AddListener(gl)
 
@@ -205,7 +205,7 @@ func TestManagerEntersStopStateEventually(t *testing.T) {
 	s2 := serviceThatStopsOnItsOwnAfterTimeout(300 * time.Millisecond)
 	gl := newGatheringManagerListener(t)
 
-	m, err := NewManager([]Service{s1, s2})
+	m, err := NewManager(s1, s2)
 	require.NoError(t, err)
 	m.AddListener(gl)
 
@@ -228,7 +228,7 @@ func TestManagerAwaitWithContextCancellation(t *testing.T) {
 	s2 := serviceThatStopsOnItsOwnAfterTimeout(300 * time.Millisecond)
 	gl := newGatheringManagerListener(t)
 
-	m, err := NewManager([]Service{s1, s2})
+	m, err := NewManager(s1, s2)
 	require.NoError(t, err)
 	m.AddListener(gl)
 

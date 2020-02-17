@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var _ Service = &BasicService{} // just make sure that BasicService implements Service
+
 type serv struct {
 	BasicService
 
@@ -63,8 +65,8 @@ func (s *serv) shutDown() error {
 }
 
 type testCase struct {
-	startErrOnContext bool
-	startRetVal       error
+	startReturnContextErr bool
+	startRetVal           error
 
 	runErrOnContext bool
 	runRetVal       error
@@ -78,8 +80,8 @@ type testCase struct {
 	stopAfterAwaitRunning   bool
 
 	// Expected values
-	awaitRunningError    bool
-	awaitTerminatedError bool
+	awaitRunningError    error
+	awaitTerminatedError error
 	failureCase          error
 	listenerLog          []string
 }
@@ -98,7 +100,7 @@ func TestStopInNew(t *testing.T) {
 
 func TestAllFunctionality(t *testing.T) {
 	errStartFailed := errors.New("start failed")
-	errRunFailed := errors.New("run failed")
+	errRunFailed := errors.New("runFn failed")
 	errStopFailed := errors.New("stop failed")
 
 	testCases := map[string]testCase{
@@ -108,66 +110,66 @@ func TestAllFunctionality(t *testing.T) {
 
 		"start returns error": {
 			startRetVal:          errStartFailed,
-			awaitRunningError:    true,
-			awaitTerminatedError: true, // Failed in start
+			awaitRunningError:    invalidServiceStateError(Failed, Running),
+			awaitTerminatedError: invalidServiceStateError(Failed, Terminated), // Failed in start
 			failureCase:          errStartFailed,
 			listenerLog:          []string{"starting", "failed: Starting: start failed"},
 		},
 
 		"start is canceled via context and returns cancelation error": {
 			cancelAfterStartAsync: true,
-			startErrOnContext:     true,
-			awaitRunningError:     true,
-			awaitTerminatedError:  true, // Failed in start
+			startReturnContextErr: true,
+			awaitRunningError:     invalidServiceStateError(Failed, Running),
+			awaitTerminatedError:  invalidServiceStateError(Failed, Terminated),
 			failureCase:           context.Canceled,
 			listenerLog:           []string{"starting", "failed: Starting: context canceled"},
 		},
 
-		"start is canceled via context, doesn't return error. Run shouldn't run, since context is canceled now.": {
+		"start is canceled via context, doesn't return error. Run shouldn't runFn, since context is canceled now.": {
 			cancelAfterStartAsync: true,
-			startErrOnContext:     false,
-			awaitRunningError:     true,  // will never be Running
-			awaitTerminatedError:  false, // but still terminates correctly, since Start or RunningFn didn't return error
-			failureCase:           nil,   // start didn't return error, service stopped without calling run
+			startReturnContextErr: false,
+			awaitRunningError:     invalidServiceStateError(Terminated, Running), // will never be Running
+			awaitTerminatedError:  nil,                                           // but still terminates correctly, since Start or RunningFn didn't return error
+			failureCase:           nil,                                           // start didn't return error, service stopped without calling run
 			listenerLog:           []string{"starting", "stopping: Starting", "terminated: Stopping"},
 		},
 
 		"start is canceled via StopAsync, but start doesn't return error": {
-			startErrOnContext:    false, // don't return error on cancellation, just stop early
-			stopAfterStartAsync:  true,
-			awaitRunningError:    true,
-			awaitTerminatedError: false, // stopped while starting, but no error. Should be in Terminated state.
-			failureCase:          nil,   // start didn't return error, service stopped without calling run
-			listenerLog:          []string{"starting", "stopping: Starting", "terminated: Stopping"},
+			startReturnContextErr: false, // don't return error on cancellation, just stop early
+			stopAfterStartAsync:   true,
+			awaitRunningError:     invalidServiceStateError(Terminated, Running),
+			awaitTerminatedError:  nil, // stopped while starting, but no error. Should be in Terminated state.
+			failureCase:           nil, // start didn't return error, service stopped without calling run
+			listenerLog:           []string{"starting", "stopping: Starting", "terminated: Stopping"},
 		},
 
-		"run returns error": {
+		"runFn returns error": {
 			runRetVal:            errRunFailed,
-			awaitTerminatedError: true, // service will get into Failed state, since run failed
+			awaitTerminatedError: invalidServiceStateError(Failed, Terminated), // service will get into Failed state, since run failed
 			failureCase:          errRunFailed,
-			listenerLog:          []string{"starting", "running", "stopping: Running", "failed: Stopping: run failed"},
+			listenerLog:          []string{"starting", "running", "stopping: Running", "failed: Stopping: runFn failed"},
 		},
 
-		"run returns error from context cancelation": {
+		"runFn returns error from context cancelation": {
 			runErrOnContext:         true,
 			cancelAfterAwaitRunning: true,
-			awaitTerminatedError:    true, // service will get into Failed state, since run failed
+			awaitTerminatedError:    invalidServiceStateError(Failed, Terminated), // service will get into Failed state, since run failed
 			failureCase:             context.Canceled,
 			listenerLog:             []string{"starting", "running", "stopping: Running", "failed: Stopping: context canceled"},
 		},
 
-		"run and stop both return error, only one is reported": {
+		"runFn and stop both return error, only one is reported": {
 			runRetVal:            errRunFailed,
 			stopRetVal:           errStopFailed,
-			awaitTerminatedError: true,         // service will get into Failed state, since run failed
-			failureCase:          errRunFailed, // run fails first, its error is returned
-			listenerLog:          []string{"starting", "running", "stopping: Running", "failed: Stopping: run failed"},
+			awaitTerminatedError: invalidServiceStateError(Failed, Terminated), // service will get into Failed state, since run failed
+			failureCase:          errRunFailed,                                 // run fails first, its error is returned
+			listenerLog:          []string{"starting", "running", "stopping: Running", "failed: Stopping: runFn failed"},
 		},
 
 		"stop returns error": {
 			runRetVal:            nil,
 			stopRetVal:           errStopFailed,
-			awaitTerminatedError: true, // service will get into Failed state, since stop fails
+			awaitTerminatedError: invalidServiceStateError(Failed, Terminated), // service will get into Failed state, since stop fails
 			failureCase:          errStopFailed,
 			listenerLog:          []string{"starting", "running", "stopping: Running", "failed: Stopping: stop failed"},
 		},
@@ -185,7 +187,7 @@ func runTestCase(t *testing.T, tc testCase) {
 	s := newServ(servConf{
 		startSleep:            time.Second,
 		startRetVal:           tc.startRetVal,
-		startErrOnContextDone: tc.startErrOnContext,
+		startErrOnContextDone: tc.startReturnContextErr,
 		runSleep:              time.Second,
 		runRetVal:             tc.runRetVal,
 		runErrOnContextDone:   tc.runErrOnContext,
@@ -212,11 +214,10 @@ func runTestCase(t *testing.T, tc testCase) {
 		s.StopAsync()
 	}
 
-	if tc.awaitRunningError {
-		require.Error(t, s.AwaitRunning(context.Background()), "AwaitRunning")
-	} else {
-		require.NoError(t, s.AwaitRunning(context.Background()), "AwaitRunning")
-	}
+	awaitCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	require.Equal(t, tc.awaitRunningError, s.AwaitRunning(awaitCtx), "AwaitRunning")
 
 	if tc.cancelAfterAwaitRunning {
 		cancel()
@@ -225,12 +226,10 @@ func runTestCase(t *testing.T, tc testCase) {
 		s.StopAsync()
 	}
 
-	if tc.awaitTerminatedError {
-		require.Error(t, s.AwaitTerminated(context.Background()), "AwaitTerminated")
-	} else {
-		require.NoError(t, s.AwaitTerminated(context.Background()), "AwaitTerminated")
-	}
+	awaitCtx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
+	require.Equal(t, tc.awaitTerminatedError, s.AwaitTerminated(awaitCtx), "AwaitTerminated")
 	require.Equal(t, tc.failureCase, s.FailureCase(), "FailureCase")
 
 	// get log, and compare against expected
