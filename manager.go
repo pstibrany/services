@@ -45,7 +45,7 @@ type Manager struct {
 }
 
 // NewManager creates new service manager. It needs at least one service, and all services must be in New state.
-func NewManager(services []Service) (*Manager, error) {
+func NewManager(services ...Service) (*Manager, error) {
 	if len(services) == 0 {
 		return nil, errors.New("no services")
 	}
