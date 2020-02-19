@@ -110,8 +110,8 @@ func TestAllFunctionality(t *testing.T) {
 
 		"start returns error": {
 			startRetVal:          errStartFailed,
-			awaitRunningError:    invalidServiceStateError(Failed, Running),
-			awaitTerminatedError: invalidServiceStateError(Failed, Terminated), // Failed in start
+			awaitRunningError:    invalidServiceStateWithFailureError(Failed, Running, errStartFailed),
+			awaitTerminatedError: invalidServiceStateWithFailureError(Failed, Terminated, errStartFailed), // Failed in start
 			failureCase:          errStartFailed,
 			listenerLog:          []string{"starting", "failed: Starting: start failed"},
 		},
@@ -119,8 +119,8 @@ func TestAllFunctionality(t *testing.T) {
 		"start is canceled via context and returns cancelation error": {
 			cancelAfterStartAsync: true,
 			startReturnContextErr: true,
-			awaitRunningError:     invalidServiceStateError(Failed, Running),
-			awaitTerminatedError:  invalidServiceStateError(Failed, Terminated),
+			awaitRunningError:     invalidServiceStateWithFailureError(Failed, Running, context.Canceled),
+			awaitTerminatedError:  invalidServiceStateWithFailureError(Failed, Terminated, context.Canceled),
 			failureCase:           context.Canceled,
 			listenerLog:           []string{"starting", "failed: Starting: context canceled"},
 		},
@@ -145,7 +145,7 @@ func TestAllFunctionality(t *testing.T) {
 
 		"runFn returns error": {
 			runRetVal:            errRunFailed,
-			awaitTerminatedError: invalidServiceStateError(Failed, Terminated), // service will get into Failed state, since run failed
+			awaitTerminatedError: invalidServiceStateWithFailureError(Failed, Terminated, errRunFailed), // service will get into Failed state, since run failed
 			failureCase:          errRunFailed,
 			listenerLog:          []string{"starting", "running", "stopping: Running", "failed: Stopping: runFn failed"},
 		},
@@ -153,7 +153,7 @@ func TestAllFunctionality(t *testing.T) {
 		"runFn returns error from context cancelation": {
 			runReturnContextErr:     true,
 			cancelAfterAwaitRunning: true,
-			awaitTerminatedError:    invalidServiceStateError(Failed, Terminated), // service will get into Failed state, since run failed
+			awaitTerminatedError:    invalidServiceStateWithFailureError(Failed, Terminated, context.Canceled), // service will get into Failed state, since run failed
 			failureCase:             context.Canceled,
 			listenerLog:             []string{"starting", "running", "stopping: Running", "failed: Stopping: context canceled"},
 		},
@@ -161,15 +161,15 @@ func TestAllFunctionality(t *testing.T) {
 		"runFn and stop both return error, only one is reported": {
 			runRetVal:            errRunFailed,
 			stopRetVal:           errStopFailed,
-			awaitTerminatedError: invalidServiceStateError(Failed, Terminated), // service will get into Failed state, since run failed
-			failureCase:          errRunFailed,                                 // run fails first, its error is returned
+			awaitTerminatedError: invalidServiceStateWithFailureError(Failed, Terminated, errRunFailed), // service will get into Failed state, since run failed
+			failureCase:          errRunFailed,                                                          // run fails first, its error is returned
 			listenerLog:          []string{"starting", "running", "stopping: Running", "failed: Stopping: runFn failed"},
 		},
 
 		"stop returns error": {
 			runRetVal:            nil,
 			stopRetVal:           errStopFailed,
-			awaitTerminatedError: invalidServiceStateError(Failed, Terminated), // service will get into Failed state, since stop fails
+			awaitTerminatedError: invalidServiceStateWithFailureError(Failed, Terminated, errStopFailed), // service will get into Failed state, since stop fails
 			failureCase:          errStopFailed,
 			listenerLog:          []string{"starting", "running", "stopping: Running", "failed: Stopping: stop failed"},
 		},

@@ -65,7 +65,11 @@ type BasicService struct {
 }
 
 func invalidServiceStateError(state, expected State) error {
-	return fmt.Errorf("invalid service state: %v, expected %v", state, expected)
+	return fmt.Errorf("invalid service state: %v, expected: %v", state, expected)
+}
+
+func invalidServiceStateWithFailureError(state, expected State, failure error) error {
+	return fmt.Errorf("invalid service state: %v, expected: %v, failure: %v", state, expected, failure)
 }
 
 // Returns service built from three functions (using BasicService).
@@ -235,6 +239,12 @@ func (b *BasicService) awaitState(ctx context.Context, expectedState State, ch c
 		if s == expectedState {
 			return nil
 		}
+
+		// if service has failed, include failure case in the returned error.
+		if failure := b.FailureCase(); failure != nil {
+			return invalidServiceStateWithFailureError(s, expectedState, failure)
+		}
+
 		return invalidServiceStateError(s, expectedState)
 	}
 }
