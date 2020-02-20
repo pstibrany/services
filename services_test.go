@@ -38,10 +38,10 @@ func TestIdleService(t *testing.T) {
 func TestTimerService(t *testing.T) {
 	iterations := int64(0)
 
-	s := NewTimerService(100*time.Millisecond, nil, nil, func(ctx context.Context) error {
+	s := NewTimerService(100*time.Millisecond, nil, func(ctx context.Context) error {
 		atomic.AddInt64(&iterations, 1)
 		return nil
-	})
+	}, nil)
 	defer s.StopAsync()
 
 	require.Equal(t, New, s.State())

@@ -24,14 +24,14 @@ func InitIdleService(bs *BasicService, start StartingFn, stop StoppingFn) {
 // in which case, service will fail.
 type OneIteration func(ctx context.Context) error
 
-func NewTimerService(interval time.Duration, up StartingFn, down StoppingFn, iter OneIteration) Service {
+func NewTimerService(interval time.Duration, up StartingFn, iter OneIteration, down StoppingFn) Service {
 	bs := &BasicService{}
-	InitTimerService(bs, interval, up, down, iter)
+	InitTimerService(bs, interval, up, iter, down)
 	return bs
 }
 
 // Runs iteration function on every interval tick. When iteration returns error, service fails.
-func InitTimerService(bs *BasicService, interval time.Duration, up StartingFn, down StoppingFn, iter OneIteration) {
+func InitTimerService(bs *BasicService, interval time.Duration, up StartingFn, iter OneIteration, down StoppingFn) {
 	InitBasicService(bs, up, func(ctx context.Context) error {
 		t := time.NewTicker(interval)
 		defer t.Stop()
