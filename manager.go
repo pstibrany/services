@@ -273,3 +273,37 @@ func (l managerServiceListener) Terminated(from State) {
 func (l managerServiceListener) Failed(from State, failure error) {
 	l.m.serviceStateChanged(l.s, from, Failed)
 }
+
+// NewManagerListener provides a simple way to build manager listener from supplied functions.
+// Functions will only be called when not nil.
+func NewManagerListener(healthy, stopped func(), failure func(service Service)) ManagerListener {
+	return &funcBasedManagerListener{
+		healthy: healthy,
+		stopped: stopped,
+		failure: failure,
+	}
+}
+
+type funcBasedManagerListener struct {
+	healthy func()
+	stopped func()
+	failure func(service Service)
+}
+
+func (f *funcBasedManagerListener) Healthy() {
+	if f.healthy != nil {
+		f.healthy()
+	}
+}
+
+func (f funcBasedManagerListener) Stopped() {
+	if f.stopped != nil {
+		f.stopped()
+	}
+}
+
+func (f funcBasedManagerListener) Failure(service Service) {
+	if f.failure != nil {
+		f.failure(service)
+	}
+}

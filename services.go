@@ -50,3 +50,53 @@ func InitTimerService(bs *BasicService, interval time.Duration, up StartingFn, d
 		}
 	}, down)
 }
+
+// NewListener provides a simple way to build service listener from supplied functions.
+// Functions are only called when not nil.
+func NewListener(starting, running func(), stopping, terminated func(from State), failed func(from State, failure error)) Listener {
+	return &funcBasedListener{
+		startingFn:   starting,
+		runningFn:    running,
+		stoppingFn:   stopping,
+		terminatedFn: terminated,
+		failedFn:     failed,
+	}
+}
+
+type funcBasedListener struct {
+	startingFn   func()
+	runningFn    func()
+	stoppingFn   func(from State)
+	terminatedFn func(from State)
+	failedFn     func(from State, failure error)
+}
+
+func (f *funcBasedListener) Starting() {
+	if f.startingFn != nil {
+		f.startingFn()
+	}
+}
+
+func (f funcBasedListener) Running() {
+	if f.runningFn != nil {
+		f.runningFn()
+	}
+}
+
+func (f funcBasedListener) Stopping(from State) {
+	if f.stoppingFn != nil {
+		f.stoppingFn(from)
+	}
+}
+
+func (f funcBasedListener) Terminated(from State) {
+	if f.terminatedFn != nil {
+		f.terminatedFn(from)
+	}
+}
+
+func (f funcBasedListener) Failed(from State, failure error) {
+	if f.failedFn != nil {
+		f.failedFn(from, failure)
+	}
+}
