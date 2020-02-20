@@ -142,6 +142,7 @@ func (b *BasicService) main() {
 	if err != nil {
 		b.mustSwitchState(Starting, Failed, func() {
 			b.failureCase = err
+			b.serviceCancel() // cancel the context, just in case if anything started in StartingFn is using it
 			// we will not reach Running or Terminated, notify waiters
 			close(b.runningWaitersCh)
 			close(b.terminatedWaitersCh)
