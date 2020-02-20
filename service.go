@@ -58,24 +58,25 @@ type Service interface {
 	StartAsync(ctx context.Context) error
 
 	// Waits until service gets into Running state.
+	// If service is in New or Starting state, this method is blocking.
 	// If service is already in Running state, returns immediately with no error.
 	// If service is in a state, from which it cannot get into Running state, error is returned immediately.
-	// This method is blocking, if service is in New or Starting state.
 	AwaitRunning(ctx context.Context) error
 
+	// Tell the service to stop. This method doesn't block and can be called multiple times.
 	// If Service is New, it is Terminated without having been started nor stopped.
 	// If Service is in Starting or Running state, this initiates shutdown and returns immediately.
 	// If Service has already been stopped, this method returns immediately, without taking action.
-	// This method doesn't block and can be called multiple times.
 	StopAsync()
 
-	// Waits for the service to reach Terminated state.
+	// Waits for the service to reach Terminated or Failed state. If service is already in one of these states,
+	// when method is called, method returns immediately.
 	// If service enters Terminated state, this method returns nil.
-	// If service enters Failed state (or context is finished before reaching Terminated or Failed), error is returned.
+	// If service enters Failed state, or context is finished before reaching Terminated or Failed, error is returned.
 	AwaitTerminated(ctx context.Context) error
 
-	// If Service is in Failed state, this method returns the reason.
-	// It returns nil, if Service is not in Failed state.
+	// If Service is in Failed state, this method returns the error.
+	// If Service is not in Failed state, this method returns nil.
 	FailureCase() error
 
 	// Returns current state of the service.
@@ -93,6 +94,7 @@ type Service interface {
 	AddListener(listener Listener)
 }
 
+// Listener receives notifications about Service state changes.
 type Listener interface {
 	// Called when the service transitions from NEW to STARTING.
 	Starting()

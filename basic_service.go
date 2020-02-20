@@ -69,7 +69,7 @@ func invalidServiceStateError(state, expected State) error {
 }
 
 func invalidServiceStateWithFailureError(state, expected State, failure error) error {
-	return fmt.Errorf("invalid service state: %v, expected: %v, failure: %v", state, expected, failure)
+	return fmt.Errorf("invalid service state: %v, expected: %v, failure: %w", state, expected, failure)
 }
 
 // Returns service built from three functions (using BasicService).
@@ -92,6 +92,7 @@ func InitBasicService(b *BasicService, start StartingFn, run RunningFn, stop Sto
 	}
 }
 
+// StartAsync is part of Service interface.
 func (b *BasicService) StartAsync(parentContext context.Context) error {
 	switched, oldState := b.switchState(New, Starting, func() {
 		b.serviceContext, b.serviceCancel = context.WithCancel(parentContext)
@@ -201,6 +202,7 @@ stop:
 	}
 }
 
+// StopAsync is part of Service interface.
 func (b *BasicService) StopAsync() {
 	if s := b.State(); s == Stopping || s == Terminated || s == Failed {
 		// no need to do anything
@@ -222,10 +224,12 @@ func (b *BasicService) StopAsync() {
 	}
 }
 
+// AwaitRunning is part of Service interface.
 func (b *BasicService) AwaitRunning(ctx context.Context) error {
 	return b.awaitState(ctx, Running, b.runningWaitersCh)
 }
 
+// AwaitTerminated is part of Service interface.
 func (b *BasicService) AwaitTerminated(ctx context.Context) error {
 	return b.awaitState(ctx, Terminated, b.terminatedWaitersCh)
 }
@@ -249,6 +253,7 @@ func (b *BasicService) awaitState(ctx context.Context, expectedState State, ch c
 	}
 }
 
+// FailureCase is part of Service interface.
 func (b *BasicService) FailureCase() error {
 	b.stateMu.RLock()
 	defer b.stateMu.RUnlock()
@@ -256,12 +261,14 @@ func (b *BasicService) FailureCase() error {
 	return b.failureCase
 }
 
+// State is part of Service interface.
 func (b *BasicService) State() State {
 	b.stateMu.RLock()
 	defer b.stateMu.RUnlock()
 	return b.state
 }
 
+// AddListener is part of Service interface.
 func (b *BasicService) AddListener(listener Listener) {
 	b.stateMu.Lock()
 	defer b.stateMu.Unlock()
