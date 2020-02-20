@@ -34,6 +34,7 @@ func NewTimerService(interval time.Duration, up StartingFn, down StoppingFn, ite
 func InitTimerService(bs *BasicService, interval time.Duration, up StartingFn, down StoppingFn, iter OneIteration) {
 	InitBasicService(bs, up, func(ctx context.Context) error {
 		t := time.NewTicker(interval)
+		defer t.Stop()
 
 		for {
 			select {
