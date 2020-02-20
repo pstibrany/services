@@ -25,13 +25,16 @@ type RunningFn func(serviceContext context.Context) error
 type StoppingFn func() error
 
 // BasicService implements contract of Service interface, using three supplied functions: StartingFn, RunningFn and StoppingFn.
-// Even though these functions are possibly called on different gouroutines, they are called sequentially and they don't need to synchronize
-// access on the state. (In other words: StartingFn happens-before RunningFn, RunningFn happens-before StoppingFn).
+// When service is started, these three functions are called as service transitions to Starting, Running and Stopping state.
+//
+// Since they are called sequentially, they don't need to synchronize access on the state.
+// (In other words: StartingFn happens-before RunningFn, RunningFn happens-before StoppingFn).
 //
 // All three functions are called at most once. If they are nil, they are not called and service transitions to the next state.
 //
 // Context passed to StartingFn and RunningFn function is canceled when StopAsync() is called, or service enters Stopping state.
 // This context can be used to start additional tasks from inside StartingFn or RunningFn.
+// Same context is available via ServiceContext() method (not part of Service interface).
 //
 // Possible orders of how functions are called:
 //
