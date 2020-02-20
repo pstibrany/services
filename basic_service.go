@@ -224,6 +224,40 @@ func (b *BasicService) StopAsync() {
 	}
 }
 
+// Returns context that this service uses internally for controlling its lifecycle. It is the same context that
+// is passed to Starting and Running functions, and is based on context passed to the service via StartAsync.
+//
+// Before service enters Starting state, there is no context. This context is stopped when service enters Stopping state.
+//
+// This can be useful in code, that embeds BasicService and wants to provide additional methods to its clients.
+//
+// Example:
+//
+//		func (s *exampleService) Send(msg string) bool {
+//			ctx := s.ServiceContext()
+//			if ctx == nil {
+//				// Service is not yet started
+//				return false
+//			}
+//			select {
+//			case s.ch <- msg:
+//				return true
+//			case <-ctx.Done():
+//				// Service is not running anymore.
+//				return false
+//			}
+//		}
+//
+// This is not part of Service interface, and clients of the Service should not use it.
+func (b *BasicService) ServiceContext() context.Context {
+	s := b.State()
+	if s == New {
+		return nil
+	}
+	// no need for locking, as we have checked the state.
+	return b.serviceContext
+}
+
 // AwaitRunning is part of Service interface.
 func (b *BasicService) AwaitRunning(ctx context.Context) error {
 	return b.awaitState(ctx, Running, b.runningWaitersCh)

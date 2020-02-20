@@ -87,15 +87,15 @@ All previous options use `BasicService` type internally, and it is `BasicService
 This struct can also be embedded into custom struct, and then initialized with starting/running/stopping functions via `InitBasicService`:
 
 ```go
-type serv struct {
+type exampleService struct {
 	BasicService
 
 	log []string
 	ch  chan string
 }
 
-func newServ() *serv {
-	s := &serv{
+func newExampleServ() *exampleService {
+	s := &exampleService{
 		ch: make(chan string),
 	}
 	InitBasicService(&s.BasicService, nil, s.collect, nil) // StartingFn, RunningFn, StoppingFn
@@ -103,7 +103,7 @@ func newServ() *serv {
 }
 
 // used as Running function. When service is stopped, context is canceled, so we react on it.
-func (s *serv) collect(ctx context.Context) error {
+func (s *exampleService) collect(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
@@ -114,10 +114,20 @@ func (s *serv) collect(ctx context.Context) error {
 	}
 }
 
-func (s *serv) Send(msg string) {
-    if s.State() == Running {
-    	s.ch <- msg
-    }
+// External method called by clients of the Service.
+func (s *exampleService) Send(msg string) bool {
+	ctx := s.ServiceContext() // provided by BasicService. Not part of Service interface.
+	if ctx == nil {
+		// Service is not yet started
+		return false
+	}
+	select {
+	case s.ch <- msg:
+		return true
+	case <-ctx.Done():
+		// Service is not running anymore.
+		return false
+	}
 }
 ```
 
