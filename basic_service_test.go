@@ -13,7 +13,7 @@ import (
 var _ Service = &BasicService{} // just make sure that BasicService implements Service
 
 type serv struct {
-	BasicService
+	Service
 
 	conf servConf
 }
@@ -34,7 +34,7 @@ func newServ(conf servConf) *serv {
 	s := &serv{
 		conf: conf,
 	}
-	InitBasicService(&s.BasicService, s.startUp, s.run, s.shutDown)
+	s.Service = NewBasicService(s.startUp, s.run, s.shutDown)
 	return s
 }
 
@@ -243,7 +243,7 @@ func runTestCase(t *testing.T, tc testCase) {
 
 // serviceListener is implemented as a service!
 type serviceListener struct {
-	BasicService
+	Service
 
 	log []string
 	ch  chan string
@@ -253,7 +253,7 @@ func newServiceListener() *serviceListener {
 	sl := &serviceListener{
 		ch: make(chan string),
 	}
-	InitBasicService(&sl.BasicService, nil, sl.collect, nil)
+	sl.Service = NewBasicService(nil, sl.collect, nil)
 	return sl
 }
 

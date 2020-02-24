@@ -6,7 +6,7 @@ import (
 )
 
 type exampleService struct {
-	BasicService
+	*BasicService
 
 	log []string
 	ch  chan string
@@ -16,7 +16,7 @@ func newExampleServ() *exampleService {
 	s := &exampleService{
 		ch: make(chan string),
 	}
-	InitBasicService(&s.BasicService, nil, s.collect, nil) // StartingFn, RunningFn, StoppingFn
+	s.BasicService = NewBasicService(nil, s.collect, nil) // StartingFn, RunningFn, StoppingFn
 	return s
 }
 

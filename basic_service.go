@@ -76,16 +76,8 @@ func invalidServiceStateWithFailureError(state, expected State, failure error) e
 }
 
 // Returns service built from three functions (using BasicService).
-func NewService(start StartingFn, run RunningFn, stop StoppingFn) Service {
-	bs := &BasicService{}
-	InitBasicService(bs, start, run, stop)
-	return bs
-}
-
-// Initializes basic service. Should only be called once. This method is useful when
-// BasicService is embedded as part of bigger service structure.
-func InitBasicService(b *BasicService, start StartingFn, run RunningFn, stop StoppingFn) {
-	*b = BasicService{
+func NewBasicService(start StartingFn, run RunningFn, stop StoppingFn) *BasicService {
+	return &BasicService{
 		startFn:             start,
 		runningFn:           run,
 		stoppingFn:          stop,

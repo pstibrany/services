@@ -270,13 +270,13 @@ func equalStatesMap(t *testing.T, m1, m2 map[State][]Service) {
 }
 
 func serviceThatFailsToStart() Service {
-	return NewService(func(serviceContext context.Context) error {
+	return NewBasicService(func(serviceContext context.Context) error {
 		return errors.New("failed to start")
 	}, nil, nil)
 }
 
 func serviceThatStopsOnItsOwnAfterTimeout(timeout time.Duration) Service {
-	return NewService(nil, func(serviceContext context.Context) error {
+	return NewBasicService(nil, func(serviceContext context.Context) error {
 		select {
 		case <-serviceContext.Done():
 			return nil
@@ -292,7 +292,7 @@ func serviceThatDoesntDoAnything() Service {
 }
 
 type gatheringManagerListener struct {
-	BasicService
+	Service
 
 	log []string
 	ch  chan string
@@ -303,7 +303,7 @@ func newGatheringManagerListener(t *testing.T) *gatheringManagerListener {
 	gl := &gatheringManagerListener{
 		ch: make(chan string),
 	}
-	InitBasicService(&gl.BasicService, nil, gl.collect, nil)
+	gl.Service = NewBasicService(nil, gl.collect, nil)
 	require.NoError(t, gl.StartAsync(context.Background()))
 	return gl
 }
